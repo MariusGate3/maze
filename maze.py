@@ -5,11 +5,6 @@ import config
 
 
 class Maze:
-    def __hash__(self):
-        return id(self)  # Use the object's unique ID for hashing
-
-    def __eq__(self, other):
-        return self is other  # Compare objects by identity
 
     def __init__(
         self, width, height, cell_size, start_cell=(0, 0), border=100, position=(0, 0)
@@ -110,6 +105,8 @@ class Maze:
             path = self.bfs((0, 0), self.end_cell)
         elif algorithm == "dfs":
             path = self.dfs((0, 0), self.end_cell)
+        elif algorithm == "a_star":
+            path = self.a_star((0, 0), self.end_cell)
         else:
             raise ValueError(f"Unknown algorithm: {algorithm}")
 
@@ -181,6 +178,47 @@ class Maze:
         self.solved_path = path
         return path
 
+    def a_star(self, start, end):
+        from heapq import heappop, heappush
+
+        open_set = []
+        heappush(open_set, (0, start))
+        came_from = {start: None}
+        g_score = {start: 0}
+        f_score = {start: self.heuristic(start, end)}
+
+        while open_set:
+            _, current = heappop(open_set)
+            self.checked_cells.append(current)
+
+            if current == end:
+                break
+
+            x, y = current
+            neighbors = self.get_neighbors(x, y)
+            for neighbor in neighbors:
+                tentative_g_score = g_score[current] + 1
+                if neighbor not in g_score or tentative_g_score < g_score[neighbor]:
+                    came_from[neighbor] = current
+                    g_score[neighbor] = tentative_g_score
+                    f_score[neighbor] = g_score[neighbor] + self.heuristic(
+                        neighbor, end
+                    )
+                    heappush(open_set, (f_score[neighbor], neighbor))
+
+        path = []
+        current = end
+        while current:
+            path.append(current)
+            current = came_from.get(current)
+        path.reverse()
+        self.solved_path = path
+        return path
+
+    def heuristic(self, a, b):
+        # Manhattan distance heuristic
+        return abs(a[0] - b[0]) + abs(a[1] - b[1])
+
     def get_neighbors(self, x, y):
         neighbors = []
         if y > 0 and not self.grid[y][x].walls[0]:
@@ -192,6 +230,12 @@ class Maze:
         if x < self.width - 1 and not self.grid[y][x].walls[1]:
             neighbors.append((x + 1, y))
         return neighbors
+
+    def draw_text(self, screen, text_height=30, color=(255, 255, 255)):
+        font = pygame.font.Font(None, 24)
+        x, y = self.position
+        text_surface = font.render(self.algorithm, True, color)
+        screen.blit(text_surface, (x, y - text_height))
 
     def draw(self, screen):
         offset_x, offset_y = self.position
