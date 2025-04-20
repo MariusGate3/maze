@@ -1,13 +1,25 @@
 from cell import cell
 import pygame
 import random
+import config
 
 
 class Maze:
+    def __hash__(self):
+        return id(self)  # Use the object's unique ID for hashing
 
-    def __init__(self, width, height, cell_size, border=100):
+    def __eq__(self, other):
+        return self is other  # Compare objects by identity
+
+    def __init__(
+        self, width, height, cell_size, start_cell=(0, 0), border=100, position=(0, 0)
+    ):
+        self.start_cell = start_cell
+        self.end_cell = (width - 1, height - 1)
+        self.current_cell = start_cell
         self.border = border
         self.cell_size = cell_size
+        self.position = position
         self.grid = [
             [cell(x * self.cell_size, y * self.cell_size) for x in range(width)]
             for y in range(height)
@@ -15,6 +27,9 @@ class Maze:
         self.visited = []
         self.width = width
         self.height = height
+        self.solved_path = []
+        self.checked_cells = []
+        self.algorithm = None
 
     def generate(self):
         start = random.choice(self.grid[0])
@@ -62,38 +77,183 @@ class Maze:
             neighbors.append(self.grid[y + 1][x])
         return [n for n in neighbors if n not in self.visited]
 
+    def update_maze(self, event):
+        if event.key == pygame.K_UP:
+            if (
+                self.current_cell[1] > 0
+                and not self.grid[self.current_cell[1]][self.current_cell[0]].walls[0]
+            ):
+                self.current_cell = (self.current_cell[0], self.current_cell[1] - 1)
+        elif event.key == pygame.K_DOWN:
+            if (
+                self.current_cell[1] < self.height - 1
+                and not self.grid[self.current_cell[1]][self.current_cell[0]].walls[2]
+            ):
+                self.current_cell = (self.current_cell[0], self.current_cell[1] + 1)
+        elif event.key == pygame.K_LEFT:
+            if (
+                self.current_cell[0] > 0
+                and not self.grid[self.current_cell[1]][self.current_cell[0]].walls[3]
+            ):
+                self.current_cell = (self.current_cell[0] - 1, self.current_cell[1])
+        elif event.key == pygame.K_RIGHT:
+            if (
+                self.current_cell[0] < self.width - 1
+                and not self.grid[self.current_cell[1]][self.current_cell[0]].walls[1]
+            ):
+                self.current_cell = (self.current_cell[0] + 1, self.current_cell[1])
+        self.grid[self.current_cell[1]][self.current_cell[0]].traversed = True
+
+    def solve_maze(self, algorithm="bfs"):
+        self.algorithm = algorithm
+        if algorithm == "bfs":
+            path = self.bfs((0, 0), self.end_cell)
+        elif algorithm == "dfs":
+            path = self.dfs((0, 0), self.end_cell)
+        else:
+            raise ValueError(f"Unknown algorithm: {algorithm}")
+
+    def visuzalize_checked_cells(self, delay):
+        for cell in self.checked_cells:
+            self.grid[cell[1]][cell[0]].algo_visited = True
+            self.draw(config.screen)
+            pygame.display.flip()
+            pygame.time.delay(delay)
+
+        for cell in self.solved_path:
+            self.grid[cell[1]][cell[0]].traversed = True
+            self.draw(config.screen)
+            pygame.display.flip()
+            pygame.time.delay(delay)
+
+    def bfs(self, start, end):
+        from collections import deque
+
+        queue = deque([start])
+        came_from = {start: None}
+
+        while queue:
+            current = queue.popleft()
+            self.checked_cells.append(current)
+
+            if current == end:
+                break
+
+            x, y = current
+            neighbors = self.get_neighbors(x, y)
+            for neighbor in neighbors:
+                if neighbor not in came_from:
+                    queue.append(neighbor)
+                    came_from[neighbor] = current
+        path = []
+        current = end
+        while current is not None:
+            path.append(current)
+            current = came_from.get(current)
+        path.reverse()
+        self.solved_path = path
+        return path
+
+    def dfs(self, start, end):
+        stack = [start]
+        came_from = {start: None}
+
+        while stack:
+            current = stack.pop()
+            self.checked_cells.append(current)
+
+            if current == end:
+                break
+
+            x, y = current
+            neighbors = self.get_neighbors(x, y)
+            for neighbor in neighbors:
+                if neighbor not in came_from:
+                    stack.append(neighbor)
+                    came_from[neighbor] = current
+
+        path = []
+        current = end
+        while current:
+            path.append(current)
+            current = came_from[current]
+        path.reverse()
+        self.solved_path = path
+        return path
+
+    def get_neighbors(self, x, y):
+        neighbors = []
+        if y > 0 and not self.grid[y][x].walls[0]:
+            neighbors.append((x, y - 1))
+        if y < self.height - 1 and not self.grid[y][x].walls[2]:
+            neighbors.append((x, y + 1))
+        if x > 0 and not self.grid[y][x].walls[3]:
+            neighbors.append((x - 1, y))
+        if x < self.width - 1 and not self.grid[y][x].walls[1]:
+            neighbors.append((x + 1, y))
+        return neighbors
+
     def draw(self, screen):
-        for row in self.grid:
-            for cell in row:
-                # top wall
+        offset_x, offset_y = self.position
+        for row_index, row in enumerate(self.grid):
+            for col_index, cell in enumerate(row):
+                cell_x = cell.x + offset_x
+                cell_y = cell.y + offset_y
+                if (col_index, row_index) == self.current_cell:
+                    pygame.draw.rect(
+                        screen,
+                        (0, 0, 128),
+                        (cell_x, cell_y, self.cell_size, self.cell_size),
+                    )
+                elif cell.traversed:
+                    pygame.draw.rect(
+                        screen,
+                        (0, 0, 255),
+                        (cell_x, cell_y, self.cell_size, self.cell_size),
+                    )
+                elif cell.algo_visited:
+                    pygame.draw.rect(
+                        screen,
+                        (200, 200, 0),
+                        (cell_x, cell_y, self.cell_size, self.cell_size),
+                    )
+                if (row_index, col_index) == (0, 0):
+                    pygame.draw.rect(
+                        screen,
+                        (0, 255, 0),
+                        (cell_x, cell_y, self.cell_size, self.cell_size),
+                    )
+                if (col_index, row_index) == self.end_cell:
+                    pygame.draw.rect(
+                        screen,
+                        (255, 0, 0),
+                        (cell_x, cell_y, self.cell_size, self.cell_size),
+                    )
                 if cell.walls[0]:
                     pygame.draw.line(
                         screen,
                         (255, 255, 255),
-                        (cell.x, cell.y),
-                        (cell.x + self.cell_size, cell.y),
+                        (cell_x, cell_y),
+                        (cell_x + self.cell_size, cell_y),
                     )
-                # right wall
                 if cell.walls[1]:
                     pygame.draw.line(
                         screen,
                         (255, 255, 255),
-                        (cell.x + self.cell_size, cell.y),
-                        (cell.x + self.cell_size, cell.y + self.cell_size),
+                        (cell_x + self.cell_size, cell_y),
+                        (cell_x + self.cell_size, cell_y + self.cell_size),
                     )
-                # bottom wall
                 if cell.walls[2]:
                     pygame.draw.line(
                         screen,
                         (255, 255, 255),
-                        (cell.x, cell.y + self.cell_size),
-                        (cell.x + self.cell_size, cell.y + self.cell_size),
+                        (cell_x, cell_y + self.cell_size),
+                        (cell_x + self.cell_size, cell_y + self.cell_size),
                     )
-                # left wall
                 if cell.walls[3]:
                     pygame.draw.line(
                         screen,
                         (255, 255, 255),
-                        (cell.x, cell.y),
-                        (cell.x, cell.y + self.cell_size),
+                        (cell_x, cell_y),
+                        (cell_x, cell_y + self.cell_size),
                     )

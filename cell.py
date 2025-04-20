@@ -4,3 +4,5 @@ class cell:
         self.y = y
         self.walls = [True, True, True, True]
         self.visited = False
+        self.traversed = False
+        self.algo_visited = False
